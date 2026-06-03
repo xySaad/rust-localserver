@@ -1,8 +1,12 @@
-use crate::http::{RequestParser, connection::ConnectionState::Parsing};
+use crate::http::{
+    ParsedRequest, RequestParser,
+    connection::ConnectionState::{Parsing, Ready},
+};
 use std::{net::SocketAddr, net::TcpStream};
 
 enum ConnectionState {
     Parsing(RequestParser),
+    Ready(ParsedRequest),
 }
 
 pub struct Connection {
@@ -25,15 +29,16 @@ impl Connection {
     pub fn handle_connection(self: &mut Self) {
         let Self { state, stream, .. } = self;
 
-        // println!("{addr:?}");
-
-        let res = match state {
-            Parsing(http_request_parser) => http_request_parser.parse(stream),
+        match state {
+            Parsing(http_request_parser) => {
+                let request = http_request_parser.parse(stream);
+                match request {
+                    Ok(None) => return,
+                    Err(e) => println!("{e:?}"),
+                    Ok(Some(res)) => self.state = Ready(res),
+                }
+            }
+            Ready(request) => todo!("Run handler"),
         };
-
-        // match res {
-        //     Ok(()) => (),
-        //     Err(e) => println!("{e:?}"),
-        // }
     }
 }
