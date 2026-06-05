@@ -1,44 +1,33 @@
-use crate::http::{
-    ParsedRequest, RequestParser,
-    connection::ConnectionState::{Parsing, Ready},
+use std::{
+    io,
+    net::{SocketAddr, TcpStream},
 };
-use std::{net::SocketAddr, net::TcpStream};
 
-enum ConnectionState {
-    Parsing(RequestParser),
-    Ready(ParsedRequest),
-}
+use crate::{future::AsyncTcpStream, http::request_parser::RequestParser};
 
 pub struct Connection {
-    stream: TcpStream,
-    state: ConnectionState,
+    stream: AsyncTcpStream,
     addr: SocketAddr,
 }
 
 impl Connection {
-    pub fn new(stream: TcpStream, addr: SocketAddr) -> Self {
-        stream.set_nonblocking(true).expect("set_nonblocking call failed");
-
-        return Connection {
-            state: Parsing(RequestParser::new()),
-            stream,
+    pub fn new(stream: TcpStream, addr: SocketAddr) -> io::Result<Self> {
+        let conn = Connection {
+            stream: AsyncTcpStream::from(stream)?,
             addr,
         };
+
+        return Ok(conn);
     }
 
-    pub fn handle_connection(self: &mut Self) {
-        let Self { state, stream, .. } = self;
-
-        match state {
-            Parsing(http_request_parser) => {
-                let request = http_request_parser.parse(stream);
-                match request {
-                    Ok(None) => return,
-                    Err(e) => println!("{e:?}"),
-                    Ok(Some(res)) => self.state = Ready(res),
-                }
+    pub async fn handle_connection(self: &mut Self) {
+        let mut parser = RequestParser::from(&mut self.stream);
+        match parser.parse().await {
+            Ok((start_line, headers)) => {
+                println!("method: {}", start_line.method);
+                println!("headers: {headers:?}");
             }
-            Ready(request) => todo!("Run handler"),
-        };
+            Err(e) => println!("error: {e:?}"),
+        }
     }
 }

@@ -1,5 +1,6 @@
 use std::fs;
 
+pub mod future;
 pub mod http;
 pub mod parser;
 
