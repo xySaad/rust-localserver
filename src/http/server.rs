@@ -1,61 +1,73 @@
 use std::{
-    io,
+    cell::{BorrowMutError, RefCell},
     net::{TcpListener, ToSocketAddrs},
-    pin::Pin,
-    sync::Arc,
-    task::{
-        Context,
-        Poll::{Pending, Ready},
-        Wake, Waker,
-    },
-    thread::sleep,
-    time::Duration,
+    rc::Rc,
 };
 
-use crate::http::Connection;
+use crate::{
+    future::{AsyncTcpListener, Pool, Task, YieldNow},
+    http::Connection,
+};
 
-pub struct ExampleWaker {}
-impl Wake for ExampleWaker {
-    fn wake(self: Arc<Self>) {
-        println!("waking...")
-    }
+pub struct Server {
+    pub listener: AsyncTcpListener,
+    pool: Rc<RefCell<Pool>>,
 }
 
-pub struct Server {}
-
 impl Server {
-    pub fn new<A: ToSocketAddrs>(name: &str, address: A) -> std::io::Result<()> {
+    //Creates a new TcpListener which will be bound to the specified address.
+    //And sets nonblocking mode to true
+    pub fn bind<A: ToSocketAddrs>(address: A) -> std::io::Result<Self> {
         let listener = TcpListener::bind(address)?;
-        listener.set_nonblocking(true).expect("Cannot set non-blocking");
-        println!("[server.{name}] is listening at http://{}", listener.local_addr()?);
+        listener.set_nonblocking(true)?;
+        return Ok(Self {
+            pool: Rc::new(RefCell::new(Pool::new())),
+            listener: AsyncTcpListener::from(listener)?,
+        });
+    }
 
-        let mut connections: Vec<Pin<Box<dyn Future<Output = ()>>>> = Vec::new();
-
-        loop {
-            sleep(Duration::from_secs(1));
-            connections.retain_mut(|fut| {
-                let arc = Arc::new(ExampleWaker {});
-                let waker = &Waker::from(arc);
-                let cx = &mut Context::from_waker(waker);
-                match fut.as_mut().poll(cx) {
-                    Ready(_) => false,
-                    Pending => true,
-                }
-            });
-
-            let conn_res = listener.accept();
-            match conn_res {
-                Ok((s, addr)) => {
-                    let conn = Connection::new(s, addr)?;
-                    let fut = Box::pin(async {
-                        let mut conn = conn;
-                        conn.handle_connection().await;
-                    });
-                    connections.push(fut);
-                }
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => continue,
-                Err(e) => panic!("encountered IO error: {e}"),
+    async fn accept(&mut self) -> Result<(), BorrowMutError> {
+        match self.listener.accept().await {
+            Ok((s, addr)) => {
+                let conn = Connection::new(s, addr);
+                println!("connection arrived");
+                let mut mx = self.pool.try_borrow_mut()?;
+                println!("adding connection task");
+                mx.add_task(Task::new(async {
+                    let mut conn = conn;
+                    conn.handle_connection().await;
+                }));
             }
+            Err(e) => println!("error accepting connection {e}"),
         }
+
+        return Ok(());
+    }
+
+    pub fn serve_and_block(self) -> () {
+        let accept_pool = Rc::clone(&self.pool);
+        let mut this = self;
+        let task = Task::new(async move {
+            loop {
+                if let Err(er) = this.accept().await {
+                    println!("error borrowing pool clone {er}")
+                }
+            }
+        });
+
+        let await_task = Task::new(async move {
+            loop {
+                match accept_pool.try_borrow_mut() {
+                    Ok(mut mx) => mx.poll_once(),
+                    Err(er) => println!("error borrowing pool {er}"),
+                }
+                YieldNow(false).await
+            }
+        });
+
+        let mut server_pool = Pool::new();
+        server_pool.add_task(task);
+        server_pool.add_task(await_task);
+        server_pool.block();
     }
 }

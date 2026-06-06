@@ -9,7 +9,12 @@ fn main() -> std::io::Result<()> {
     let config = parser::parse_config(&config_str);
     if let Ok(config) = config {
         for (name, server_config) in config.servers {
-            http::Server::new(&name, (server_config.address, server_config.port))?;
+            let server = http::Server::bind((server_config.address, server_config.port))?;
+            println!(
+                "[server.{name}] is listening at http://{}",
+                server.listener.listener.local_addr()?
+            );
+            server.serve_and_block();
         }
     } else {
         println!("{:?}", config.err())
