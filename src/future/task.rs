@@ -1,4 +1,5 @@
 use std::{
+    cell::{BorrowMutError, RefCell},
     pin::Pin,
     sync::Arc,
     task::{
@@ -33,7 +34,7 @@ pub struct NoOpWaker {}
 impl NoOpWaker {}
 impl Wake for NoOpWaker {
     fn wake(self: Arc<Self>) {
-        println!("waking...")
+        // println!("waking...")
     }
 }
 
@@ -71,6 +72,14 @@ impl Pool {
     pub async fn await_all(&mut self) {
         loop {
             self.poll_once();
+            YieldNow(false).await;
+            sleep(Duration::from_secs(1));
+        }
+    }
+
+    pub async fn ref_await_all(this: &RefCell<Self>) -> Result<(), BorrowMutError> {
+        loop {
+            this.try_borrow_mut()?.poll_once();
             YieldNow(false).await;
             sleep(Duration::from_secs(1));
         }

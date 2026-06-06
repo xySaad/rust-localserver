@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    future::{AsyncTcpListener, Pool, Task, YieldNow},
+    future::{AsyncTcpListener, Pool, Task},
     http::Connection,
 };
 
@@ -44,7 +44,15 @@ impl Server {
         return Ok(());
     }
 
+    pub async fn serve(self) {
+        self.build_executor().await_all().await;
+    }
+
     pub fn serve_and_block(self) -> () {
+        self.build_executor().block();
+    }
+
+    pub fn build_executor(self) -> Pool {
         let accept_pool = Rc::clone(&self.pool);
         let mut this = self;
         let task = Task::new(async move {
@@ -56,18 +64,14 @@ impl Server {
         });
 
         let await_task = Task::new(async move {
-            loop {
-                match accept_pool.try_borrow_mut() {
-                    Ok(mut mx) => mx.poll_once(),
-                    Err(er) => println!("error borrowing pool {er}"),
-                }
-                YieldNow(false).await
-            }
+            Pool::ref_await_all(accept_pool.as_ref())
+                .await
+                .unwrap_or_else(|e| println!("error borrowing pool {e}"));
         });
 
-        let mut server_pool = Pool::new();
-        server_pool.add_task(task);
-        server_pool.add_task(await_task);
-        server_pool.block();
+        let mut executor = Pool::new();
+        executor.add_task(task);
+        executor.add_task(await_task);
+        return executor;
     }
 }
