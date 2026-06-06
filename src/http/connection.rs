@@ -1,6 +1,9 @@
 use std::net::SocketAddr;
 
-use crate::{future::AsyncTcpStream, http::request_parser::RequestParser};
+use crate::{
+    future::AsyncTcpStream,
+    http::{Request, request_parser::RequestParser},
+};
 
 pub struct Connection {
     stream: AsyncTcpStream,
@@ -12,13 +15,13 @@ impl Connection {
         return Self { stream, addr };
     }
 
-    pub async fn handle_connection(self: &mut Self) {
+    pub async fn handle_connection<F: AsyncFn(Request<'_>)>(self: &mut Self, handler: F) {
         let mut parser = RequestParser::from(&mut self.stream);
         println!("parsing connection");
         match parser.parse().await {
             Ok((start_line, headers)) => {
-                println!("method: {}", start_line.method);
-                println!("headers: {headers:?}");
+                let req = Request::new(start_line, &mut self.stream, headers);
+                handler(req).await;
             }
             Err(e) => println!("error: {e:?}"),
         }

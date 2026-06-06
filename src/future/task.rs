@@ -13,20 +13,20 @@ use std::{
 
 use crate::future::YieldNow;
 
-pub struct Task {
-    future: Pin<Box<dyn Future<Output = ()>>>,
+pub struct Task<'t> {
+    future: Pin<Box<dyn Future<Output = ()> + 't>>,
 }
-impl Task {
-    pub fn new<F: Future<Output = ()> + 'static>(future: F) -> Self {
+impl<'t> Task<'t> {
+    pub fn new<F: Future<Output = ()> + 't>(future: F) -> Self {
         return Self {
             future: Box::pin(future),
         };
     }
 }
 
-pub struct Pool {
-    pending: Vec<Task>,
-    awake: Vec<Task>,
+pub struct Pool<'t> {
+    pending: Vec<Task<'t>>,
+    awake: Vec<Task<'t>>,
 }
 
 pub struct NoOpWaker {}
@@ -38,7 +38,7 @@ impl Wake for NoOpWaker {
     }
 }
 
-impl Pool {
+impl<'t> Pool<'t> {
     pub fn new() -> Self {
         return Self {
             pending: vec![],
@@ -46,7 +46,7 @@ impl Pool {
         };
     }
 
-    pub fn add_task(&mut self, task: Task) {
+    pub fn add_task(&mut self, task: Task<'t>) {
         self.awake.push(task);
     }
 
@@ -60,12 +60,12 @@ impl Pool {
                 Pending => true,
             }
         });
+        sleep(Duration::from_nanos(1));
     }
 
     pub fn block(&mut self) {
         loop {
             self.poll_once();
-            sleep(Duration::from_secs(1));
         }
     }
 
@@ -73,7 +73,6 @@ impl Pool {
         loop {
             self.poll_once();
             YieldNow(false).await;
-            sleep(Duration::from_secs(1));
         }
     }
 
@@ -81,7 +80,6 @@ impl Pool {
         loop {
             this.try_borrow_mut()?.poll_once();
             YieldNow(false).await;
-            sleep(Duration::from_secs(1));
         }
     }
 }

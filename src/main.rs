@@ -2,6 +2,7 @@ use std::{fs, io};
 
 use crate::{
     future::{Pool, Task},
+    http::Request,
     parser::ServerConfig,
 };
 
@@ -9,13 +10,19 @@ pub mod future;
 pub mod http;
 pub mod parser;
 
+async fn server_handler(req: Request<'_>) {
+    let Request { meta, headers, .. } = req;
+    println!("Method: {}", meta.method);
+    println!("Host: {}", headers.get("Host").unwrap_or(&vec![String::new()])[0]);
+}
+
 async fn run_server(name: String, config: ServerConfig) -> io::Result<()> {
     let server = http::Server::bind((config.address, config.port))?;
     println!(
         "[server.{name}] is listening at http://{}",
         server.listener.listener.local_addr()?
     );
-    server.serve().await;
+    server.serve(&server_handler).await;
 
     Ok(())
 }
