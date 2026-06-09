@@ -7,10 +7,12 @@ pub struct ClientConfig {
 }
 
 pub struct ServerConfig {
-    pub root_destination: String,
+    pub root: String,
     pub address: String,
     pub port: u16,
-    pub host: String,
+    pub host: Vec<String>,
+    pub index: String,
+    pub list_directory: bool,
 }
 
 pub struct MuxConfig {
@@ -40,15 +42,21 @@ fn get_value(options: &HashMap<String, String>, option_name: &str) -> Result<Str
 
 fn parse_server_config(options: &HashMap<String, String>) -> Result<ServerConfig, String> {
     let address = get_value(options, "address")?;
-    let host = get_value(options, "host")?;
-    let root_destination = get_value(options, "root_destination")?;
+    let host = get_value(options, "host")?.split("/").map(String::from).collect();
+    let root = get_value(options, "root")?;
     let port = get_value(options, "port")?.parse::<u16>().map_err(|x| x.to_string())?;
+    let index = get_value(options, "index")?;
+    let list_directory = get_value(options, "list_directory")?
+        .parse::<bool>()
+        .map_err(|x| x.to_string())?;
 
     let server_config = ServerConfig {
         address,
         host,
         port,
-        root_destination,
+        root,
+        index,
+        list_directory,
     };
 
     return Ok(server_config);

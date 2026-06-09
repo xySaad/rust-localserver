@@ -1,6 +1,6 @@
 use std::{io, net::TcpStream};
 
-use crate::future::{AsyncRead, ReadFuture};
+use crate::future::{AsyncRead, AsyncWrite, ReadFuture, WriteFuture};
 
 pub struct AsyncTcpStream {
     stream: TcpStream,
@@ -17,6 +17,16 @@ impl AsyncRead for AsyncTcpStream {
         ReadFuture {
             buf,
             reader: &mut self.stream,
+        }
+        .await
+    }
+}
+
+impl AsyncWrite for AsyncTcpStream {
+    async fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        WriteFuture {
+            buf,
+            writer: &mut self.stream,
         }
         .await
     }

@@ -1,28 +1,25 @@
 use std::{fs, io};
 
 use crate::{
+    connection_handler::connection_handler,
     future::{Pool, Task},
-    http::Request,
     parser::ServerConfig,
 };
 
+pub mod connection_handler;
+pub mod file_server;
 pub mod future;
 pub mod http;
 pub mod parser;
 
-async fn server_handler(req: Request<'_>) {
-    let Request { meta, headers, .. } = req;
-    println!("Method: {}", meta.method);
-    println!("Host: {}", headers.get("Host").unwrap_or(&vec![String::new()])[0]);
-}
-
-async fn run_server(name: String, config: ServerConfig) -> io::Result<()> {
-    let server = http::Server::bind((config.address, config.port))?;
+async fn run_server(name: String, config: &ServerConfig) -> io::Result<()> {
+    let server = http::Server::bind((config.address.as_ref(), config.port))?;
     println!(
         "[server.{name}] is listening at http://{}",
         server.listener.listener.local_addr()?
     );
-    server.serve(&server_handler).await;
+
+    server.serve(&async |req| connection_handler(req, config).await).await;
 
     Ok(())
 }
@@ -37,7 +34,8 @@ fn main() -> std::io::Result<()> {
             for (name, server_config) in cfg.servers {
                 let task = Task::new(async {
                     let name = name;
-                    run_server(name.clone(), server_config)
+                    let server_config = server_config;
+                    run_server(name.clone(), &server_config)
                         .await
                         .unwrap_or_else(|e| println!("[server.{name}]: {e}"))
                 });

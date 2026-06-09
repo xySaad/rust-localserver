@@ -1,9 +1,8 @@
 use crate::{
     future::{AsyncBufferReader, AsyncRead, BufferRead},
     http::{
-        self,
-        Error::{BadRequest, InternalError},
-        RequestHeaders, RequestLine,
+        self, Headers, RequestLine,
+        Status::{BadRequest, InternalError},
     },
 };
 pub struct RequestParser<AR: AsyncRead> {
@@ -17,6 +16,12 @@ impl<AR: AsyncRead> From<AR> for RequestParser<AR> {
     }
 }
 
+fn clean_cr(value: &str) -> String {
+    value.strip_suffix('\r').unwrap_or(value).trim().to_owned()
+}
+fn lossy_string_or_empty(v: &[u8]) -> String {
+    String::from_utf8_lossy(v).to_string()
+}
 impl<AR: AsyncRead> RequestParser<AR> {
     pub async fn parse_request_line(self: &mut Self) -> http::Result<RequestLine> {
         let line = &mut Vec::new();
@@ -44,8 +49,8 @@ impl<AR: AsyncRead> RequestParser<AR> {
         return Ok(request_meta);
     }
 
-    pub async fn parse_headers(self: &mut Self) -> http::Result<RequestHeaders> {
-        let mut headers = RequestHeaders::new();
+    pub async fn parse_headers(self: &mut Self) -> http::Result<Headers> {
+        let mut headers = Headers::new();
 
         loop {
             let line = &mut Vec::new();
@@ -54,15 +59,21 @@ impl<AR: AsyncRead> RequestParser<AR> {
                 break;
             }
             let separator = line.iter().position(|b| *b == b':').ok_or(BadRequest)?;
-            let header_name = String::from_utf8_lossy(&line[..separator]).to_string();
-            let header_value = String::from_utf8_lossy(&line[separator + 1..]).to_string();
-            headers.entry(header_name).or_insert(vec![]).push(header_value);
+            let header_name = lossy_string_or_empty(&line[..separator]);
+            let header_value = lossy_string_or_empty(&line[separator + 1..]);
+            let clean_header_name = header_name.trim().to_owned();
+            let clean_header_value = clean_cr(&header_value);
+
+            headers
+                .entry(clean_header_name)
+                .or_insert(vec![])
+                .push(clean_header_value);
         }
 
         return Ok(headers);
     }
 
-    pub async fn parse(self: &mut Self) -> http::Result<(RequestLine, RequestHeaders)> {
+    pub async fn parse(self: &mut Self) -> http::Result<(RequestLine, Headers)> {
         let start_line = self.parse_request_line().await?;
 
         let headers = self.parse_headers().await?;

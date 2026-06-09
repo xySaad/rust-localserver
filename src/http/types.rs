@@ -1,10 +1,18 @@
+use core::fmt;
 use std::result;
 
-#[derive(Debug)]
-pub enum Error {
+#[derive(Debug, Clone, Copy)]
+pub enum Status {
+    OK = 200,
     BadRequest = 400,
     NotFound = 404,
+    MisdirectedRequest = 421,
     InternalError = 500,
+    MovedPermanently = 301,
 }
-
-pub type Result<T = ()> = result::Result<T, Error>;
+impl fmt::Display for Status {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", *self as isize)
+    }
+}
+pub type Result<T = ()> = result::Result<T, Status>;
