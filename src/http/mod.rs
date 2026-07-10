@@ -15,3 +15,6 @@ pub use request::*;
 
 pub mod response;
 pub use response::*;
+
+pub mod uri;
+pub use uri::*;

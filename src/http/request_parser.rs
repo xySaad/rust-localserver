@@ -3,6 +3,7 @@ use crate::{
     http::{
         self, Headers, RequestLine,
         Status::{BadRequest, InternalError},
+        is_request_target,
     },
 };
 pub struct RequestParser<AR: AsyncRead> {
@@ -22,17 +23,27 @@ fn clean_cr(value: &str) -> String {
 fn lossy_string_or_empty(v: &[u8]) -> String {
     String::from_utf8_lossy(v).to_string()
 }
+
 impl<AR: AsyncRead> RequestParser<AR> {
+    //rfc9110 section-5.6.2
+    fn is_token(b: &u8) -> bool {
+        b"!#$%&'*+-.^_`|~".contains(b) || b.is_ascii_alphanumeric()
+    }
+
     pub async fn parse_request_line(self: &mut Self) -> http::Result<RequestLine> {
         let line = &mut Vec::new();
         let _n = self.reader.read_until(b'\n', line).await.map_err(|_e| InternalError)?;
-
         //TODO: if n is 0 return an error like 'connection closed'
+
         let mut parts = line.split(|b| *b == b' ');
-        //TODO: add check for allowed methods
+
         let method = parts.next().ok_or(BadRequest)?;
+        // rfc9112 section-3.1
+        method.iter().all(|b| Self::is_token(b)).then(|| ()).ok_or(BadRequest)?;
+
         //TODO: add check for request target max_length
         let request_target = parts.next().ok_or(BadRequest)?;
+        is_request_target(request_target).then(|| ()).ok_or(BadRequest)?;
         let protocol = parts.next().ok_or(BadRequest)?;
         if protocol != "HTTP/1.1\r".as_bytes() {
             return Err(BadRequest);
