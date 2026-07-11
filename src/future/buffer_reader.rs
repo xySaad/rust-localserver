@@ -26,6 +26,15 @@ impl<AR: AsyncRead> From<AR> for AsyncBufferReader<AR> {
 
 impl<AR: AsyncRead> AsyncRead for AsyncBufferReader<AR> {
     async fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        // read from internal buffer before reading from stream
+        if self.start < self.end {
+            let available = &self.buf[self.start..self.end];
+            let n = std::cmp::min(available.len(), buf.len());
+            buf[..n].copy_from_slice(&available[..n]);
+            self.start += n;
+            return Ok(n);
+        }
+
         match self.reader.read(buf).await {
             Ok(v) => return Ok(v),
             Err(e) => {
@@ -55,6 +64,9 @@ impl<AR: AsyncRead> AsyncBufferReader<AR> {
 
         buf.extend_from_slice(&remaining);
         return false;
+    }
+    pub fn take_reader(self) -> AR {
+        return self.reader;
     }
 }
 impl<AR: AsyncRead> BufferRead for AsyncBufferReader<AR> {

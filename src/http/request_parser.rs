@@ -84,10 +84,11 @@ impl<AR: AsyncRead> RequestParser<AR> {
         return Ok(headers);
     }
 
-    pub async fn parse(self: &mut Self) -> http::Result<(RequestLine, Headers)> {
+    pub async fn parse(mut self) -> http::Result<(RequestLine, Headers, AsyncBufferReader<AR>)> {
         let start_line = self.parse_request_line().await?;
 
         let headers = self.parse_headers().await?;
-        return Ok((start_line, headers));
+
+        return Ok((start_line, headers, self.reader));
     }
 }

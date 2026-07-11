@@ -1,6 +1,9 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, io};
 
-use crate::{future::AsyncTcpStream, http::Response};
+use crate::{
+    future::{AsyncBufferReader, AsyncRead, AsyncWrite},
+    http::Response,
+};
 
 pub struct RequestLine {
     pub method: String,
@@ -9,14 +12,14 @@ pub struct RequestLine {
 }
 
 pub type Headers = HashMap<String, Vec<String>>;
-pub struct Request<'t> {
+pub struct Request<AR: AsyncRead> {
     pub meta: RequestLine,
     pub headers: Headers,
-    body: &'t mut AsyncTcpStream,
+    body: AsyncBufferReader<AR>,
 }
 
-impl<'t> Request<'t> {
-    pub fn new(meta: RequestLine, body: &'t mut AsyncTcpStream, headers: Headers) -> Self {
+impl<'t, AR: AsyncRead> Request<AR> {
+    pub fn new(meta: RequestLine, body: AsyncBufferReader<AR>, headers: Headers) -> Self {
         return Request { meta, headers, body };
     }
 
@@ -29,7 +32,30 @@ impl<'t> Request<'t> {
 
         return None;
     }
-    pub fn response(self) -> Response<'t> {
-        Response::new(self.body)
+
+    pub async fn body(&mut self) -> io::Result<Vec<u8>> {
+        let len = self
+            .header("Content-Length")
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(0);
+
+        let mut buf = vec![0u8; len];
+        let mut total = 0;
+        while total < len {
+            let n = self.body.read(&mut buf[total..]).await?;
+            if n == 0 {
+                break;
+            }
+            total += n;
+        }
+        buf.truncate(total);
+
+        Ok(buf)
+    }
+}
+
+impl<'t, ARW: AsyncRead + AsyncWrite> Request<ARW> {
+    pub fn response(self) -> Response<ARW> {
+        Response::new(self.body.take_reader())
     }
 }

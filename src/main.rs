@@ -1,16 +1,11 @@
 use std::{fs, io};
 
-use crate::{
+use rust_localserver::{
     connection_handler::connection_handler,
     future::{Pool, Task},
-    parser::ServerConfig,
+    http,
+    parser::{self, ServerConfig},
 };
-
-pub mod connection_handler;
-pub mod file_server;
-pub mod future;
-pub mod http;
-pub mod parser;
 
 async fn run_server(name: String, config: &ServerConfig) -> io::Result<()> {
     let server = http::Server::bind((config.address.as_ref(), config.port))?;

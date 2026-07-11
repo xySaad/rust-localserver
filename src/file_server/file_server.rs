@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    future::{AsyncWrite, ReadFuture},
+    future::{AsyncTcpStream, AsyncWrite, ReadFuture},
     http::{self, BodyWriter, Headers, Request, Response, Status},
 };
 
@@ -31,8 +31,8 @@ impl<'t> FileServer<'t> {
         }
     }
 
-    async fn get_file(&self, req: &Request<'_>) -> http::Result<FileResult> {
-        let root = Path::new(self.root).canonicalize().map_err(|_| Status::BadRequest)?;
+    async fn get_file(&self, req: &Request<&mut AsyncTcpStream>) -> http::Result<FileResult> {
+        let root = &Path::new(self.root).canonicalize().map_err(|_| Status::BadRequest)?;
         let user_path = Path::new(&req.meta.request_target);
         let user_path = user_path.strip_prefix("/").map_err(|_| Status::BadRequest)?;
         let path = root.join(user_path).canonicalize().map_err(|_| Status::NotFound)?;
@@ -60,10 +60,21 @@ impl<'t> FileServer<'t> {
             return Ok(FileResult::Dir(files));
         }
 
+        if !self.index.is_empty() {
+            let path = root.join(self.index).canonicalize().map_err(|_| Status::NotFound)?;
+            if !path.starts_with(root) || !path.exists() {
+                return Err(Status::NotFound);
+            }
+            let file = OpenOptions::new()
+                .read(true)
+                .open(path)
+                .map_err(|_| Status::InternalError)?;
+            return Ok(FileResult::File(file));
+        }
         return Err(Status::NotFound);
     }
 
-    pub async fn serve(&self, req: Request<'_>) {
+    pub async fn serve(&self, req: Request<&mut AsyncTcpStream>) {
         match self.get_file(&req).await {
             Ok(FileResult::Dir(_)) if !req.meta.request_target.ends_with('/') => {
                 let location = format!("{}/", req.meta.request_target);
@@ -91,7 +102,7 @@ impl<'t> FileServer<'t> {
         }
     }
 
-    async fn serve_file(&self, resp: Response<'_>, result: &mut FileResult) {
+    async fn serve_file(&self, resp: Response<&mut AsyncTcpStream>, result: &mut FileResult) {
         match result {
             FileResult::File(file) => {
                 let mut wr = resp.status(Status::OK).await.headers(Headers::new()).await;
@@ -119,7 +130,7 @@ impl<'t> FileServer<'t> {
         }
     }
 
-    async fn write_file<W: AsyncWrite>(&self, wr: &mut BodyWriter<'_, W>, file: &mut File) {
+    async fn write_file<WR: AsyncWrite>(&self, wr: &mut BodyWriter<WR>, file: &mut File) {
         let buf = &mut [0; 512];
 
         loop {
@@ -127,7 +138,7 @@ impl<'t> FileServer<'t> {
             if n == 0 {
                 break;
             }
-            _ = wr.write(buf).await;
+            _ = wr.write(&buf[..n]).await;
         }
     }
 }

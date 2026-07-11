@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    future::{AsyncTcpListener, Pool, Task},
+    future::{AsyncTcpListener, AsyncTcpStream, Pool, Task},
     http::{Connection, Request},
 };
 
@@ -26,7 +26,7 @@ impl<'t> Server<'t> {
         });
     }
 
-    async fn accept<H: AsyncFn(Request<'_>)>(&mut self, handler: &'t H) -> Result<(), BorrowMutError> {
+    async fn accept<H: AsyncFn(Request<&mut AsyncTcpStream>)>(&mut self, handler: &'t H) -> Result<(), BorrowMutError> {
         match self.listener.accept().await {
             Ok((s, addr)) => {
                 let conn = Connection::new(s, addr);
@@ -44,15 +44,15 @@ impl<'t> Server<'t> {
         return Ok(());
     }
 
-    pub async fn serve<H: AsyncFn(Request<'_>)>(self, handler: &'t H) {
+    pub async fn serve<H: AsyncFn(Request<&mut AsyncTcpStream>)>(self, handler: &'t H) {
         self.build_executor(handler).await_all().await;
     }
 
-    pub fn serve_and_block<H: AsyncFn(Request<'_>)>(self, handler: &'t H) -> () {
+    pub fn serve_and_block<H: AsyncFn(Request<&mut AsyncTcpStream>)>(self, handler: &'t H) {
         self.build_executor(handler).block();
     }
 
-    pub fn build_executor<H: AsyncFn(Request<'_>)>(self, handler: &'t H) -> Pool<'t> {
+    pub fn build_executor<H: AsyncFn(Request<&mut AsyncTcpStream>)>(self, handler: &'t H) -> Pool<'t> {
         let accept_pool = Rc::clone(&self.pool);
         let mut this = self;
         let task = Task::new(async move {

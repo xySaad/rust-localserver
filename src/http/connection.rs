@@ -15,12 +15,12 @@ impl Connection {
         return Self { stream, addr };
     }
 
-    pub async fn handle_connection<F: AsyncFn(Request<'_>)>(self: &mut Self, handler: F) {
-        let mut parser = RequestParser::from(&mut self.stream);
+    pub async fn handle_connection<F: AsyncFn(Request<&mut AsyncTcpStream>)>(self: &mut Self, handler: F) {
+        let parser = RequestParser::from(&mut self.stream);
         println!("parsing connection");
         match parser.parse().await {
-            Ok((start_line, headers)) => {
-                let req = Request::new(start_line, &mut self.stream, headers);
+            Ok((start_line, headers, stream)) => {
+                let req = Request::new(start_line, stream, headers);
                 handler(req).await;
             }
             Err(e) => println!("error: {e:?}"),
