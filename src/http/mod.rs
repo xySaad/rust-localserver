@@ -18,3 +18,6 @@ pub use response::*;
 
 pub mod uri;
 pub use uri::*;
+
+pub mod cookie;
+pub use cookie::*;

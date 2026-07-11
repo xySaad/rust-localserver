@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Login Portal</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 420px;
+        margin: 3rem auto;
+        padding: 0 1.5rem;
+        line-height: 1.4;
+      }
+      h1 {
+        font-size: 1.4rem;
+      }
+      section {
+        border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+      }
+      h2 {
+        margin-top: 0;
+        font-size: 1rem;
+      }
+      form {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+      input,
+      button {
+        font: inherit;
+        padding: 0.5rem;
+        border-radius: 6px;
+        border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+      }
+      button {
+        cursor: pointer;
+      }
+      #message {
+        min-height: 1.2rem;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Login Portal</h1>
+
+    <section>
+      <h2>Register</h2>
+      <form id="register-form">
+        <input
+          name="username"
+          placeholder="Username"
+          autocomplete="username"
+          required
+        />
+        <input
+          name="password"
+          type="password"
+          placeholder="Password"
+          autocomplete="new-password"
+          required
+        />
+        <button type="submit">Register</button>
+      </form>
+    </section>
+
+    <section>
+      <h2>Log in</h2>
+      <form id="login-form">
+        <input
+          name="username"
+          placeholder="Username"
+          autocomplete="username"
+          required
+        />
+        <input
+          name="password"
+          type="password"
+          placeholder="Password"
+          autocomplete="current-password"
+          required
+        />
+        <button type="submit">Log in</button>
+      </form>
+    </section>
+
+    <section>
+      <h2>Who am I?</h2>
+      <button id="whoami-button">Check session</button>
+    </section>
+
+    <p id="message"></p>
+
+    <script>
+      const message = document.getElementById("message");
+
+      function showMessage(text, isError) {
+        message.textContent = text;
+        message.style.color = isError ? "#c0392b" : "#2d6a4f";
+      }
+
+      async function submitForm(form, url) {
+        const body = new URLSearchParams(new FormData(form));
+        const response = await fetch(url, { method: "POST", body });
+        showMessage(await response.text(), !response.ok);
+      }
+
+      document
+        .getElementById("register-form")
+        .addEventListener("submit", (event) => {
+          event.preventDefault();
+          submitForm(event.target, "/register");
+        });
+
+      document
+        .getElementById("login-form")
+        .addEventListener("submit", (event) => {
+          event.preventDefault();
+          submitForm(event.target, "/login");
+        });
+
+      document
+        .getElementById("whoami-button")
+        .addEventListener("click", async () => {
+          const response = await fetch("/me");
+          const text = await response.text();
+          showMessage(
+            response.ok ? `Logged in as ${text}` : text,
+            !response.ok,
+          );
+        });
+    </script>
+  </body>
+</html>

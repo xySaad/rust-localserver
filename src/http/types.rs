@@ -5,6 +5,7 @@ use std::result;
 pub enum Status {
     OK = 200,
     BadRequest = 400,
+    Unauthorized = 401,
     NotFound = 404,
     MisdirectedRequest = 421,
     InternalError = 500,
