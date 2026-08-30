@@ -1,7 +1,7 @@
 use std::{collections::HashMap, format, fs, result};
 
 use rust_localserver::{
-    file_server::FileServer,
+    file_server::{FileServer, HTTPFileReader},
     future::{AsyncTcpStream, AsyncWrite, Pool, Task},
     http::{
         self, Headers, Request,
@@ -38,7 +38,24 @@ fn main() -> result::Result<(), String> {
         }
 
         let task = Task::new(async move {
-            let handler = async |req: Request<&mut AsyncTcpStream>| connection_handler(req, &server_config_list).await;
+            let handler = async |req: Request<&mut AsyncTcpStream>| match serve_file(&req, &server_config_list).await {
+                Ok((status, headers, body)) => {
+                    let mut wr = req.response().status(status).await.headers(headers).await;
+                    if let Some(mut reader) = body {
+                        reader.read_to_writer(&mut wr).await;
+                    }
+                }
+                Err(status) => {
+                    _ = req
+                        .response()
+                        .status(status)
+                        .await
+                        .headers(Headers::new())
+                        .await
+                        .write(format!("{0} {0:?}", status).as_bytes())
+                        .await
+                }
+            };
 
             match http::Server::bind((address.clone(), port)) {
                 Err(e) => eprintln!("Error binding at {address}:{port} - {e}"),
@@ -64,44 +81,24 @@ fn main() -> result::Result<(), String> {
     Ok(())
 }
 
-async fn check_host<'t>(
+async fn serve_file<'t>(
     req: &Request<&mut AsyncTcpStream>,
     server_config_list: &'t Vec<(String, ServerConfig)>,
-) -> http::Result<&'t (String, ServerConfig)> {
+) -> http::Result<(Status, Headers, Option<HTTPFileReader>)> {
     let req_host = req.header("Host").map(|s| s.to_owned()).ok_or(Status::BadRequest)?;
-    return server_config_list
+    let (_name, cfg) = server_config_list
         .into_iter()
         .find(|(_name, cfg)| cfg.host.contains(&req_host))
-        .ok_or(Status::MisdirectedRequest);
-}
+        .ok_or(Status::MisdirectedRequest)?;
+    let ServerConfig {
+        root,
+        list_directory,
+        index,
+        address: _,
+        port: _,
+        host: _,
+    } = cfg;
 
-async fn connection_handler<'t>(
-    req: Request<&mut AsyncTcpStream>,
-    server_config_list: &'t Vec<(String, ServerConfig)>,
-) {
-    match check_host(&req, &server_config_list).await {
-        Ok((_name, cfg)) => {
-            let ServerConfig {
-                root,
-                list_directory,
-                index,
-                address: _,
-                port: _,
-                host: _,
-            } = cfg;
-
-            let file_server = FileServer::new(root, index, *list_directory);
-            file_server.serve(req).await;
-        }
-        Err(status) => {
-            _ = req
-                .response()
-                .status(status)
-                .await
-                .headers(Headers::new())
-                .await
-                .write(format!("{0} {0:?}", status).as_bytes())
-                .await;
-        }
-    };
+    let file_server = FileServer::new(root, index, *list_directory);
+    return file_server.serve(&req).await;
 }

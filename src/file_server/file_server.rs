@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     future::{AsyncTcpStream, AsyncWrite, ReadFuture},
-    http::{self, BodyWriter, Headers, Request, Response, Status},
+    http::{self, Headers, Request, Status},
 };
 
 pub struct FileServer<'t> {
@@ -74,45 +74,49 @@ impl<'t> FileServer<'t> {
         return Err(Status::NotFound);
     }
 
-    pub async fn serve(&self, req: Request<&mut AsyncTcpStream>) {
-        match self.get_file(&req).await {
-            Ok(FileResult::Dir(_)) if !req.meta.request_target.ends_with('/') => {
+    pub async fn serve(
+        &self,
+        req: &Request<&mut AsyncTcpStream>,
+    ) -> http::Result<(Status, Headers, Option<HTTPFileReader>)> {
+        if req.meta.method != "GET" {
+            return Err(Status::MethodNotAllowed);
+        }
+
+        match self.get_file(&req).await? {
+            FileResult::Dir(_) if !req.meta.request_target.ends_with('/') => {
                 let location = format!("{}/", req.meta.request_target);
                 let mut headers = Headers::new();
                 headers.insert("Location".to_owned(), vec![location]);
-                _ = req
-                    .response()
-                    .status(Status::MovedPermanently)
-                    .await
-                    .headers(headers)
-                    .await;
+                return Ok((Status::MovedPermanently, headers, None));
             }
-            Ok(ref mut res) => self.serve_file(req.response(), res).await,
-            Err(status) => {
-                let body = format!("{status} {status:?}");
-                _ = req
-                    .response()
-                    .status(status)
-                    .await
-                    .headers(Headers::new())
-                    .await
-                    .write(body.as_bytes())
-                    .await;
+            file_result => {
+                return Ok((Status::OK, Headers::new(), Some(HTTPFileReader { file_result })));
             }
         }
     }
+}
 
-    async fn serve_file(&self, resp: Response<&mut AsyncTcpStream>, result: &mut FileResult) {
-        match result {
+pub struct HTTPFileReader {
+    file_result: FileResult,
+}
+
+impl HTTPFileReader {
+    pub async fn read_to_writer<W: AsyncWrite>(&mut self, wr: &mut W) {
+        match &mut self.file_result {
             FileResult::File(file) => {
-                let mut wr = resp.status(Status::OK).await.headers(Headers::new()).await;
-                self.write_file(&mut wr, file).await;
+                let buf = &mut [0; 512];
+
+                loop {
+                    let n = ReadFuture { buf, reader: file }.await.unwrap_or(0);
+                    if n == 0 {
+                        break;
+                    }
+                    _ = wr.write(&buf[..n]).await;
+                }
             }
             FileResult::Dir(items) => {
                 let mut headers = Headers::new();
                 headers.insert("Content-Type".to_owned(), vec!["text/html".to_owned()]);
-                let mut wr = resp.status(Status::OK).await.headers(headers).await;
-
                 let post = String::new()
                     .add("<!doctype html>\n")
                     .add("<meta name=\"viewport\" content=\"width=device-width\">\n")
@@ -127,18 +131,6 @@ impl<'t> FileServer<'t> {
 
                 _ = wr.write("</pre>\n".as_bytes()).await;
             }
-        }
-    }
-
-    async fn write_file<WR: AsyncWrite>(&self, wr: &mut BodyWriter<WR>, file: &mut File) {
-        let buf = &mut [0; 512];
-
-        loop {
-            let n = ReadFuture { buf, reader: file }.await.unwrap_or(0);
-            if n == 0 {
-                break;
-            }
-            _ = wr.write(&buf[..n]).await;
         }
     }
 }

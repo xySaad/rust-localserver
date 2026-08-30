@@ -126,7 +126,26 @@ async fn handle(req: Request<&mut AsyncTcpStream>, state: &AppState) {
         ("POST", "/register") => register(req, state).await,
         ("POST", "/login") => login(req, state).await,
         ("GET", "/me") => me(req, state).await,
-        _ => file_server.serve(req).await,
+        _ => {
+            match file_server.serve(&req).await {
+                Ok((status, headers, body)) => {
+                    let mut wr = req.response().status(status).await.headers(headers).await;
+                    if let Some(mut reader) = body {
+                        reader.read_to_writer(&mut wr).await;
+                    }
+                }
+                Err(status) => {
+                    _ = req
+                        .response()
+                        .status(status)
+                        .await
+                        .headers(Headers::new())
+                        .await
+                        .write(format!("{0} {0:?}", status).as_bytes())
+                        .await
+                }
+            };
+        }
     }
 }
 
