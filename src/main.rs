@@ -1,45 +1,107 @@
-use std::{fs, io};
+use std::{collections::HashMap, format, fs, result};
 
 use rust_localserver::{
-    connection_handler::connection_handler,
-    future::{Pool, Task},
-    http,
+    file_server::FileServer,
+    future::{AsyncTcpStream, AsyncWrite, Pool, Task},
+    http::{
+        self, Headers, Request,
+        Status::{self},
+    },
     parser::{self, ServerConfig},
 };
 
-async fn run_server(name: String, config: &ServerConfig) -> io::Result<()> {
-    let server = http::Server::bind((config.address.as_ref(), config.port))?;
-    println!(
-        "[server.{name}] is listening at http://{}",
-        server.listener.listener.local_addr()?
-    );
+fn main() -> result::Result<(), String> {
+    let config_str = fs::read_to_string("config.ini").map_err(|e| format!("error parsing config {e}"))?;
+    let config = parser::parse_config(&config_str).map_err(|e| format!("error parsing config: {e}"))?;
 
-    server.serve(&async |req| connection_handler(req, config).await).await;
+    // Group server configs by their unique (address, port) combination
+    //TODO: use hashmap instead of array to prevent two configs/servers with the  same host in the same binding
+    //TODO: use resolved address instead of address string to handle address overlap (e.g, 0.0.0.0 with another address, or localhost with 127.0.0.1)
+    let mut bindings = HashMap::<_, Vec<_>>::new();
+    for (name, server_config) in config.servers {
+        let key = (server_config.address.clone(), server_config.port);
+        bindings.entry(key).or_default().push((name, server_config));
+    }
 
+    let mut servers_pool = Pool::new();
+    for ((address, port), server_config_list) in bindings {
+        //Host -> Server Name
+        let mut seen_hosts: HashMap<String, String> = HashMap::new();
+
+        for (name, cfg) in &server_config_list {
+            for host in &cfg.host {
+                if let Some(see_host_server_name) = seen_hosts.get(host) {
+                    return Err(format!("duplicated host '{host}' in {name} and {see_host_server_name}"));
+                };
+                seen_hosts.insert(host.clone(), name.clone());
+            }
+        }
+
+        let task = Task::new(async move {
+            let handler = async |req: Request<&mut AsyncTcpStream>| connection_handler(req, &server_config_list).await;
+
+            match http::Server::bind((address.clone(), port)) {
+                Err(e) => eprintln!("Error binding at {address}:{port} - {e}"),
+                Ok(server) => {
+                    if let Ok(addr) = server.listener.listener.local_addr() {
+                        println!("Created binding at {}", addr);
+                    } else {
+                        println!("Created binding at {address}:{port}");
+                    }
+                    server_config_list.iter().for_each(|(name, cfg)| {
+                        let label: Vec<_> = cfg.host.iter().map(|host| format!("http://{host}:{port}")).collect();
+                        println!("[{name}]: {}", label.join(","))
+                    });
+
+                    server.serve(&handler).await;
+                }
+            };
+        });
+        servers_pool.add_task(task);
+    }
+
+    servers_pool.block();
     Ok(())
 }
 
-fn main() -> std::io::Result<()> {
-    let config_str = fs::read_to_string("config.ini")?;
-    let config = parser::parse_config(&config_str);
+async fn check_host<'t>(
+    req: &Request<&mut AsyncTcpStream>,
+    server_config_list: &'t Vec<(String, ServerConfig)>,
+) -> http::Result<&'t (String, ServerConfig)> {
+    let req_host = req.header("Host").map(|s| s.to_owned()).ok_or(Status::BadRequest)?;
+    return server_config_list
+        .into_iter()
+        .find(|(_name, cfg)| cfg.host.contains(&req_host))
+        .ok_or(Status::MisdirectedRequest);
+}
 
-    match config {
-        Ok(cfg) => {
-            let mut servers_pool = Pool::new();
-            for (name, server_config) in cfg.servers {
-                let task = Task::new(async {
-                    let name = name;
-                    let server_config = server_config;
-                    run_server(name.clone(), &server_config)
-                        .await
-                        .unwrap_or_else(|e| println!("[server.{name}]: {e}"))
-                });
-                servers_pool.add_task(task);
-            }
-            servers_pool.block();
+async fn connection_handler<'t>(
+    req: Request<&mut AsyncTcpStream>,
+    server_config_list: &'t Vec<(String, ServerConfig)>,
+) {
+    match check_host(&req, &server_config_list).await {
+        Ok((_name, cfg)) => {
+            let ServerConfig {
+                root,
+                list_directory,
+                index,
+                address: _,
+                port: _,
+                host: _,
+            } = cfg;
+
+            let file_server = FileServer::new(root, index, *list_directory);
+            file_server.serve(req).await;
         }
-        Err(e) => println!("error parsing config: {e}"),
-    }
-
-    Ok(())
+        Err(status) => {
+            _ = req
+                .response()
+                .status(status)
+                .await
+                .headers(Headers::new())
+                .await
+                .write(format!("{0} {0:?}", status).as_bytes())
+                .await;
+        }
+    };
 }
