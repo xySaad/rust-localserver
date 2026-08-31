@@ -13,6 +13,7 @@ pub struct ServerConfig {
     pub host: Vec<String>,
     pub index: String,
     pub list_directory: bool,
+    pub error_pages_dir: String,
 }
 
 pub struct MuxConfig {
@@ -49,6 +50,7 @@ fn parse_server_config(options: &HashMap<String, String>) -> Result<ServerConfig
     let list_directory = get_value(options, "list_directory")?
         .parse::<bool>()
         .map_err(|x| x.to_string())?;
+    let error_pages_dir = get_value(options, "error_pages_dir")?;
 
     let server_config = ServerConfig {
         address,
@@ -57,6 +59,7 @@ fn parse_server_config(options: &HashMap<String, String>) -> Result<ServerConfig
         root,
         index,
         list_directory,
+        error_pages_dir,
     };
 
     return Ok(server_config);

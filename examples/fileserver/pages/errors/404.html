@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>404 — Page Not Found</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --bg: #0d0f18;
+        --surface: #171b2e;
+        --text: #dde1ee;
+        --muted: #505672;
+        --accent: #f0a500;
+        --g-cyan: #2dd4f0;
+        --g-red: #f0302d;
+      }
+
+      html,
+      body {
+        height: 100%;
+      }
+
+      body {
+        font-family:
+          "Space Grotesk",
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: radial-gradient(
+          ellipse 80% 60% at 50% 44%,
+          var(--surface) 0%,
+          var(--bg) 65%
+        );
+        color: var(--text);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+
+      /* Scanline texture */
+      body::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background: repeating-linear-gradient(
+          to bottom,
+          transparent 0px,
+          transparent 3px,
+          rgba(0, 0, 0, 0.035) 3px,
+          rgba(0, 0, 0, 0.035) 4px
+        );
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      /* ─── Page wrapper ─── */
+      .page {
+        position: relative;
+        z-index: 1;
+        text-align: center;
+        padding: 2rem 1.5rem;
+        animation: rise 0.75s cubic-bezier(0.16, 1, 0.3, 1) both;
+      }
+
+      /* ─── 404 Hero ─── */
+      .glitch-wrap {
+        position: relative;
+        display: inline-block;
+        margin-bottom: 2.25rem;
+      }
+
+      /* Ambient amber glow behind the number */
+      .glitch-wrap::before {
+        content: "";
+        position: absolute;
+        inset: -30% -20%;
+        background: radial-gradient(
+          ellipse at center,
+          rgba(240, 165, 0, 0.07) 0%,
+          transparent 70%
+        );
+        pointer-events: none;
+        z-index: -1;
+      }
+
+      .hero {
+        font-size: clamp(7rem, 22vw, 16rem);
+        font-weight: 700;
+        letter-spacing: -0.055em;
+        line-height: 0.9;
+        color: var(--text);
+        position: relative;
+        display: block;
+        user-select: none;
+      }
+
+      @media (prefers-reduced-motion: no-preference) {
+        .hero::before,
+        .hero::after {
+          content: "404";
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          font-size: inherit;
+          font-weight: inherit;
+          letter-spacing: inherit;
+          line-height: inherit;
+          pointer-events: none;
+          opacity: 0;
+        }
+
+        /* Cyan channel — upper band */
+        .hero::before {
+          color: var(--g-cyan);
+          clip-path: polygon(0 18%, 100% 18%, 100% 38%, 0 38%);
+          animation: ghost-a 9s steps(1) 0.4s infinite;
+        }
+
+        /* Red channel — lower band */
+        .hero::after {
+          color: var(--g-red);
+          clip-path: polygon(0 62%, 100% 62%, 100% 80%, 0 80%);
+          animation: ghost-b 9s steps(1) 0.4s infinite;
+        }
+      }
+
+      @keyframes ghost-a {
+        0%,
+        7%,
+        100% {
+          opacity: 0;
+          transform: none;
+        }
+        1% {
+          opacity: 1;
+          transform: translate(-6px, 1px);
+        }
+        2% {
+          opacity: 0.9;
+          transform: translate(-4px, -2px);
+        }
+        3% {
+          opacity: 1;
+          transform: translate(-7px, 2px);
+        }
+        4% {
+          opacity: 0;
+        }
+        5% {
+          opacity: 0.7;
+          transform: translate(-5px, 0px);
+        }
+        6% {
+          opacity: 0;
+          transform: none;
+        }
+      }
+
+      @keyframes ghost-b {
+        0%,
+        7%,
+        100% {
+          opacity: 0;
+          transform: none;
+        }
+        1.5% {
+          opacity: 1;
+          transform: translate(6px, -1px);
+        }
+        2.5% {
+          opacity: 0.8;
+          transform: translate(4px, 2px);
+        }
+        3.5% {
+          opacity: 1;
+          transform: translate(7px, -2px);
+        }
+        4.5% {
+          opacity: 0;
+        }
+        5.5% {
+          opacity: 0.6;
+          transform: translate(5px, 0px);
+        }
+        6.5% {
+          opacity: 0;
+          transform: none;
+        }
+      }
+
+      /* ─── Accent mark ─── */
+      .mark {
+        display: block;
+        width: 30px;
+        height: 3px;
+        background: var(--accent);
+        border-radius: 1.5px;
+        margin: 0 auto 1.75rem;
+      }
+
+      /* ─── Copy ─── */
+      .title {
+        font-size: clamp(1rem, 2.4vw, 1.25rem);
+        font-weight: 400;
+        letter-spacing: -0.015em;
+        color: var(--text);
+        margin-bottom: 0.65rem;
+      }
+
+      .body {
+        font-size: 0.9rem;
+        font-weight: 300;
+        color: var(--muted);
+        max-width: 34ch;
+        margin: 0 auto 2.5rem;
+        line-height: 1.75;
+      }
+
+      /* ─── CTA ─── */
+      .btn {
+        display: inline-block;
+        color: var(--accent);
+        border: 1.5px solid rgba(240, 165, 0, 0.45);
+        padding: 0.7rem 1.9rem;
+        text-decoration: none;
+        font-family: inherit;
+        font-size: 0.875rem;
+        font-weight: 500;
+        border-radius: 3px;
+        letter-spacing: 0.01em;
+        transition:
+          background 0.18s ease,
+          border-color 0.18s ease,
+          color 0.18s ease;
+      }
+
+      .btn:hover {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--bg);
+      }
+
+      .btn:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(240, 165, 0, 0.35);
+      }
+
+      /* ─── Entrance ─── */
+      @keyframes rise {
+        from {
+          opacity: 0;
+          transform: translateY(22px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div class="glitch-wrap">
+        <span class="hero" aria-label="404">404</span>
+      </div>
+
+      <span class="mark" aria-hidden="true"></span>
+
+      <p class="title">Page not found</p>
+      <p class="body">
+        The page you're looking for has wandered off or never existed. Check the
+        URL, or head back to familiar ground.
+      </p>
+
+      <a href="/" class="btn">Return home</a>
+    </div>
+  </body>
+</html>
