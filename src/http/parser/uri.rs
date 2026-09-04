@@ -1,3 +1,5 @@
+use crate::http::consume;
+
 //rfc9112 section-3.2
 pub fn is_request_target(line: &[u8]) -> bool {
     is_origin_form(line) || is_absolute_form(line) || is_authority_form(line) || is_asterisk_form(line)
@@ -12,24 +14,6 @@ fn is_origin_form(line: &[u8]) -> bool {
 
 fn is_absolute_path(seq: &[u8]) -> bool {
     !seq.is_empty() && seq[0] == b'/' && consume_path_abempty(seq) == seq.len()
-}
-
-/// validates the `seq`uence using `predicate`
-///
-/// returns the consumed position and a boolean that indicates if minimum attempts is fulfilled
-fn consume(seq: &[u8], predicate: fn(seq: &[u8]) -> (usize, bool), min: usize) -> (usize, bool) {
-    let mut i = 0;
-    let mut attempts = 0;
-    while i < seq.len() {
-        let (pos, valid) = predicate(&seq[i..]);
-        i += pos;
-        attempts += 1;
-        if !valid {
-            break;
-        }
-    }
-
-    return (i, attempts > min);
 }
 
 //rfc3986 section-3.2.3

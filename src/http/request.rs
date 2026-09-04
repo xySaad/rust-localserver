@@ -2,7 +2,7 @@ use std::{collections::HashMap, io};
 
 use crate::{
     future::{AsyncBufferReader, AsyncRead, AsyncWrite},
-    http::Response,
+    http::{Response, body_reader::BodyReader},
 };
 
 pub struct RequestLine {
@@ -12,50 +12,50 @@ pub struct RequestLine {
 }
 
 pub type Headers = HashMap<String, Vec<String>>;
+
 pub struct Request<AR: AsyncRead> {
     pub meta: RequestLine,
     pub headers: Headers,
-    body: AsyncBufferReader<AR>,
+    body_reader: BodyReader<AR>,
 }
 
-impl<'t, AR: AsyncRead> Request<AR> {
-    pub fn new(meta: RequestLine, body: AsyncBufferReader<AR>, headers: Headers) -> Self {
-        return Request { meta, headers, body };
+impl<AR: AsyncRead> Request<AR> {
+    pub fn new(meta: RequestLine, raw: AsyncBufferReader<AR>, headers: Headers) -> Self {
+        let body_reader = BodyReader::from_headers(&headers, raw);
+        Request {
+            meta,
+            headers,
+            body_reader,
+        }
     }
 
     pub fn header(&self, key: &str) -> Option<&str> {
-        if let Some(headers) = self.headers.get(key) {
-            if let Some(header) = headers.get(0) {
-                return Some(header);
-            }
-        }
-
-        return None;
+        self.headers.get(key)?.first().map(String::as_str)
     }
 
-    pub async fn body(&mut self) -> io::Result<Vec<u8>> {
-        let len = self
-            .header("Content-Length")
-            .and_then(|v| v.parse::<usize>().ok())
-            .unwrap_or(0);
+    /// Reads the next chunk of body bytes into `buf`, per whichever framing (RFC 9112 §6).
+    /// Returns `Ok(0)` once the body is exhausted.
+    pub async fn read_body(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.body_reader.read(buf).await
+    }
 
-        let mut buf = vec![0u8; len];
-        let mut total = 0;
-        while total < len {
-            let n = self.body.read(&mut buf[total..]).await?;
+    /// reads the whole body into a `Vec<u8>` and returns it
+    pub async fn body(&mut self) -> io::Result<Vec<u8>> {
+        let mut body = Vec::new();
+        let mut chunk = [0u8; 8192];
+        loop {
+            let n = self.read_body(&mut chunk).await?;
             if n == 0 {
                 break;
             }
-            total += n;
+            body.extend_from_slice(&chunk[..n]);
         }
-        buf.truncate(total);
-
-        Ok(buf)
+        Ok(body)
     }
 }
 
-impl<'t, ARW: AsyncRead + AsyncWrite> Request<ARW> {
+impl<ARW: AsyncRead + AsyncWrite> Request<ARW> {
     pub fn response(self) -> Response<ARW> {
-        Response::new(self.body.take_reader())
+        Response::new(self.body_reader.into_raw().take_reader())
     }
 }
