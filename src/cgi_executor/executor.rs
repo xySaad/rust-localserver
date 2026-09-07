@@ -20,9 +20,16 @@ impl CGIExecutor {
         cgi_file_path: String,
         client_body_size_limit: &'t ByteSize,
     ) -> http::Result<()> {
-        let env_vars = build_cgi_env(&req.meta, &req.headers);
+        let script_dir = std::path::Path::new(&cgi_file_path)
+            .parent()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|| ".".to_string());
+
+        let mut env_vars = build_cgi_env(&req.meta, &req.headers);
+        env_vars.insert("PWD".to_string(), script_dir.clone());
         let child = Command::new(cgi_file_path)
             .envs(env_vars)
+            .current_dir(script_dir)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -86,7 +93,7 @@ impl CGIExecutor {
             let cgi_headers = parse_cgi_headers(&buf_out[..header_end]);
             let (status_code, reason) = resolve_status(&cgi_headers);
 
-            let mut out = format!("{} {status_code} {reason}\r\n", req.borrow().meta.protocol);
+            let mut out = format!("HTTP/1.1 {status_code} {reason}\r\n");
             for (key, value) in &cgi_headers {
                 if key.eq_ignore_ascii_case("status") {
                     continue;
