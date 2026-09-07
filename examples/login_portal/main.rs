@@ -7,7 +7,7 @@ use bcrypt::{DEFAULT_COST, hash, verify};
 use getrandom::Error;
 use rust_localserver::{
     file_server::FileServer,
-    future::{AsyncTcpStream, AsyncWrite},
+    future::{AsyncTcpStream, AsyncWrite, copy},
     http::{self, Cookie, Headers, Request, SameSite, SetCookie, Status},
 };
 
@@ -121,7 +121,7 @@ async fn handle(req: Request<&mut AsyncTcpStream>, state: &AppState) {
     let file_server = FileServer::new("examples/login_portal", "index.html", false);
 
     let method: &str = &req.meta.method;
-    let request_target: &str = &req.meta.request_target;
+    let request_target: &str = &req.meta.path;
     match (method, request_target) {
         ("POST", "/register") => register(req, state).await,
         ("POST", "/login") => login(req, state).await,
@@ -131,7 +131,7 @@ async fn handle(req: Request<&mut AsyncTcpStream>, state: &AppState) {
                 Ok((status, headers, body)) => {
                     let mut wr = req.response().status(status).await.headers(headers).await;
                     if let Some(mut reader) = body {
-                        reader.read_to_writer(&mut wr).await;
+                        let _ = copy(&mut reader, &mut wr).await;
                     }
                 }
                 Err(status) => {

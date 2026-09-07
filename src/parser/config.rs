@@ -1,10 +1,8 @@
 use std::collections::HashMap;
 
-use crate::parser::parse_ini;
+use bytesize::ByteSize;
 
-pub struct ClientConfig {
-    pub body_size_limit: u64,
-}
+use crate::parser::parse_ini;
 
 pub struct ServerConfig {
     pub root: String,
@@ -14,10 +12,11 @@ pub struct ServerConfig {
     pub index: String,
     pub list_directory: bool,
     pub error_pages_dir: String,
+    pub client_body_size_limit: ByteSize,
+    pub cgi_root: String,
 }
 
 pub struct MuxConfig {
-    pub client: ClientConfig,
     pub servers: HashMap<String, ServerConfig>,
 }
 
@@ -27,9 +26,6 @@ fn match_at(parts: &Vec<&str>, i: usize, str: &str) -> bool {
 
 fn is_server(parts: &Vec<&str>) -> bool {
     match_at(parts, 0, "server")
-}
-fn is_client(parts: &Vec<&str>) -> bool {
-    match_at(parts, 0, "client")
 }
 
 fn get_value(options: &HashMap<String, String>, option_name: &str) -> Result<String, String> {
@@ -51,6 +47,10 @@ fn parse_server_config(options: &HashMap<String, String>) -> Result<ServerConfig
         .parse::<bool>()
         .map_err(|x| x.to_string())?;
     let error_pages_dir = get_value(options, "error_pages_dir")?;
+    let client_body_size_limit = get_value(options, "client_body_size_limit")?
+        .parse::<ByteSize>()
+        .map_err(|x| x.to_string())?;
+    let cgi_root = get_value(options, "cgi_root")?;
 
     let server_config = ServerConfig {
         address,
@@ -60,6 +60,8 @@ fn parse_server_config(options: &HashMap<String, String>) -> Result<ServerConfig
         index,
         list_directory,
         error_pages_dir,
+        client_body_size_limit,
+        cgi_root,
     };
 
     return Ok(server_config);
@@ -67,7 +69,6 @@ fn parse_server_config(options: &HashMap<String, String>) -> Result<ServerConfig
 
 pub fn parse_config(config_data: &str) -> Result<MuxConfig, String> {
     let ini_config = parse_ini(config_data);
-    let mut client_config: Option<ClientConfig> = None;
     let mut servers = HashMap::<String, ServerConfig>::new();
 
     for (section, options_list) in ini_config.sections {
@@ -87,24 +88,7 @@ pub fn parse_config(config_data: &str) -> Result<MuxConfig, String> {
                 servers.insert(server_name, server_config);
             }
         }
-
-        if is_client(&parts) {
-            if options_list.len() > 1 {
-                return Err(format!("Duplicated [client] config"));
-            }
-            if options_list.len() < 1 {
-                return Err(format!("Missing [client] config"));
-            }
-            let body_size_limit = get_value(&options_list[0], "body_size_limit")?
-                .parse::<u64>()
-                .map_err(|x| x.to_string())?;
-            client_config = Some(ClientConfig { body_size_limit })
-        }
     }
 
-    if let Some(client) = client_config {
-        return Ok(MuxConfig { client, servers });
-    }
-
-    return Err(format!("Missing [client] config"));
+    return Ok(MuxConfig { servers });
 }

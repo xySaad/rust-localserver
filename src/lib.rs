@@ -1,3 +1,4 @@
+pub mod cgi_executor;
 pub mod file_server;
 pub mod future;
 pub mod handler;

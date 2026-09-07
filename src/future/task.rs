@@ -65,12 +65,18 @@ impl<'t> Pool<'t> {
 
     pub fn block(&mut self) {
         loop {
+            if self.awake.is_empty() {
+                break;
+            }
             self.poll_once();
         }
     }
 
     pub async fn await_all(&mut self) {
         loop {
+            if self.awake.is_empty() {
+                break;
+            }
             self.poll_once();
             YieldNow(false).await;
         }

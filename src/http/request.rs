@@ -6,9 +6,10 @@ use crate::{
 };
 
 pub struct RequestLine {
-    pub method: String,
-    pub request_target: String,
     pub protocol: String,
+    pub method: String,
+    pub path: String,
+    pub query: String,
 }
 
 pub type Headers = HashMap<String, Vec<String>>;
@@ -57,5 +58,8 @@ impl<AR: AsyncRead> Request<AR> {
 impl<ARW: AsyncRead + AsyncWrite> Request<ARW> {
     pub fn response(self) -> Response<ARW> {
         Response::new(self.body_reader.into_raw().take_reader())
+    }
+    pub async fn write_raw_response(&mut self, buf: &[u8]) -> io::Result<usize> {
+        return self.body_reader.into_raw_mut().as_mut_reader().write(buf).await;
     }
 }

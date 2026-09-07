@@ -73,4 +73,13 @@ impl<AR: AsyncRead> BodyReader<AR> {
             BodyReader::Rejected(raw, _, _) => raw,
         }
     }
+
+    pub fn into_raw_mut(&mut self) -> &mut AsyncBufferReader<AR> {
+        match self {
+            BodyReader::Sized(r) => r.into_raw_mut(),
+            BodyReader::Chunked(r) => r.into_raw_mut(),
+            BodyReader::Empty(raw) => raw,
+            BodyReader::Rejected(raw, _, _) => raw,
+        }
+    }
 }

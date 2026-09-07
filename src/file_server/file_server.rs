@@ -1,12 +1,13 @@
 use std::{
     ffi::OsString,
     fs::{self, File, OpenOptions},
+    io,
     ops::Add,
     path::Path,
 };
 
 use crate::{
-    future::{AsyncTcpStream, AsyncWrite, ReadFuture},
+    future::{AsyncRead, AsyncTcpStream, ReadFuture},
     http::{self, Headers, Request, Status},
 };
 
@@ -33,7 +34,7 @@ impl<'t> FileServer<'t> {
 
     async fn get_file(&self, req: &Request<&mut AsyncTcpStream>) -> http::Result<FileResult> {
         let root = &Path::new(self.root).canonicalize().map_err(|_| Status::BadRequest)?;
-        let user_path = Path::new(&req.meta.request_target);
+        let user_path = Path::new(&req.meta.path);
         let user_path = user_path.strip_prefix("/").map_err(|_| Status::BadRequest)?;
         let path = root.join(user_path).canonicalize().map_err(|_| Status::NotFound)?;
 
@@ -77,60 +78,94 @@ impl<'t> FileServer<'t> {
     pub async fn serve(
         &self,
         req: &Request<&mut AsyncTcpStream>,
-    ) -> http::Result<(Status, Headers, Option<HTTPFileReader>)> {
+    ) -> http::Result<(Status, Headers, Option<HTTPBodyReader>)> {
         if req.meta.method != "GET" {
             return Err(Status::MethodNotAllowed);
         }
 
         match self.get_file(&req).await? {
-            FileResult::Dir(_) if !req.meta.request_target.ends_with('/') => {
-                let location = format!("{}/", req.meta.request_target);
+            FileResult::Dir(_) if !req.meta.path.ends_with('/') => {
+                let location = format!("{}/", req.meta.path);
                 let mut headers = Headers::new();
                 headers.insert("Location".to_owned(), vec![location]);
                 return Ok((Status::MovedPermanently, headers, None));
             }
             file_result => {
-                return Ok((Status::OK, Headers::new(), Some(HTTPFileReader { file_result })));
+                let http_result = match file_result {
+                    FileResult::File(file) => (
+                        Status::OK,
+                        Headers::new(),
+                        Some(HTTPBodyReader::File(HTTPFileReader { file })),
+                    ),
+                    FileResult::Dir(os_strings) => {
+                        let mut headers = Headers::new();
+                        headers.insert("Content-Type".to_owned(), vec!["text/html".to_owned()]);
+                        (
+                            Status::OK,
+                            headers,
+                            Some(HTTPBodyReader::Dir(HTTPDirReader::new(os_strings))),
+                        )
+                    }
+                };
+                return Ok(http_result);
             }
         }
     }
 }
 
-pub struct HTTPFileReader {
-    file_result: FileResult,
+pub enum HTTPBodyReader {
+    File(HTTPFileReader),
+    Dir(HTTPDirReader),
 }
 
-impl HTTPFileReader {
-    pub async fn read_to_writer<W: AsyncWrite>(&mut self, wr: &mut W) {
-        match &mut self.file_result {
-            FileResult::File(file) => {
-                let buf = &mut [0; 512];
-
-                loop {
-                    let n = ReadFuture { buf, reader: file }.await.unwrap_or(0);
-                    if n == 0 {
-                        break;
-                    }
-                    _ = wr.write(&buf[..n]).await;
-                }
-            }
-            FileResult::Dir(items) => {
-                let mut headers = Headers::new();
-                headers.insert("Content-Type".to_owned(), vec!["text/html".to_owned()]);
-                let post = String::new()
-                    .add("<!doctype html>\n")
-                    .add("<meta name=\"viewport\" content=\"width=device-width\">\n")
-                    .add("<pre>");
-
-                _ = wr.write(post.as_bytes()).await;
-                for item in items {
-                    let file_name = item.to_string_lossy().to_string();
-                    let line = format!("<a href=\"{file_name}\">{file_name}</a>\n");
-                    _ = wr.write(line.as_bytes()).await;
-                }
-
-                _ = wr.write("</pre>\n".as_bytes()).await;
-            }
+impl AsyncRead for HTTPBodyReader {
+    async fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        match self {
+            HTTPBodyReader::File(r) => r.read(buf).await,
+            HTTPBodyReader::Dir(r) => r.read(buf).await,
         }
+    }
+}
+
+pub struct HTTPFileReader {
+    file: File,
+}
+impl AsyncRead for HTTPFileReader {
+    async fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        return ReadFuture {
+            buf,
+            reader: &mut self.file,
+        }
+        .await;
+    }
+}
+pub struct HTTPDirReader {
+    content: io::Cursor<Vec<u8>>,
+}
+
+impl HTTPDirReader {
+    pub fn new(entries: Vec<OsString>) -> Self {
+        let mut body = String::new()
+            .add("<!doctype html>\n")
+            .add("<meta name=\"viewport\" content=\"width=device-width\">\n")
+            .add("<pre>\n");
+
+        for item in &entries {
+            let file_name = item.to_string_lossy().to_string();
+            body.push_str(&format!("<a href=\"{file_name}\">{file_name}</a>\n"));
+        }
+
+        body.push_str("</pre>\n");
+
+        Self {
+            content: io::Cursor::new(body.into_bytes()),
+        }
+    }
+}
+
+impl AsyncRead for HTTPDirReader {
+    async fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        use std::io::Read;
+        self.content.read(buf)
     }
 }

@@ -38,7 +38,6 @@ impl<AR: AsyncRead> AsyncRead for AsyncBufferReader<AR> {
         match self.reader.read(buf).await {
             Ok(v) => return Ok(v),
             Err(e) => {
-                println!("read error: {}", e.kind());
                 return Err(e);
             }
         }
@@ -67,6 +66,9 @@ impl<AR: AsyncRead> AsyncBufferReader<AR> {
     }
     pub fn take_reader(self) -> AR {
         return self.reader;
+    }
+    pub fn as_mut_reader(&mut self) -> &mut AR {
+        return &mut self.reader;
     }
 }
 impl<AR: AsyncRead> BufferRead for AsyncBufferReader<AR> {

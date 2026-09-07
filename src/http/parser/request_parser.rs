@@ -52,10 +52,17 @@ impl<AR: AsyncRead> RequestParser<AR> {
         let method = String::from_utf8_lossy(method).to_string();
         let request_target = String::from_utf8_lossy(request_target).to_string();
         let protocol = String::from_utf8_lossy(protocol).to_string();
+
+        let (path, query) = request_target
+            .split_once('?')
+            .map(|(p, q)| (p.to_string(), q.to_string()))
+            .unwrap_or_else(|| (request_target.clone(), String::new()));
+
         let request_meta = RequestLine {
-            method,
-            request_target,
             protocol,
+            method,
+            path,
+            query,
         };
         return Ok(request_meta);
     }

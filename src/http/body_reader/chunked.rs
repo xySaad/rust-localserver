@@ -88,4 +88,8 @@ impl<AR: AsyncRead> ChunkedBodyReader<AR> {
     pub fn into_raw(self) -> AsyncBufferReader<AR> {
         self.raw
     }
+
+    pub fn into_raw_mut(&mut self) -> &mut AsyncBufferReader<AR> {
+        &mut self.raw
+    }
 }
