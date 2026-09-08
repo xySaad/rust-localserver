@@ -94,11 +94,11 @@ impl CGIExecutor {
             let (status_code, reason) = resolve_status(&cgi_headers);
 
             let mut out = format!("HTTP/1.1 {status_code} {reason}\r\n");
-            for (key, value) in &cgi_headers {
-                if key.eq_ignore_ascii_case("status") {
+            for (key, (orig_key, value)) in &cgi_headers {
+                if key == "status" {
                     continue;
                 }
-                out.push_str(key);
+                out.push_str(orig_key);
                 out.push_str(": ");
                 out.push_str(value);
                 out.push_str("\r\n");
@@ -154,27 +154,19 @@ fn find_header_terminator(buf: &[u8]) -> Option<(usize, usize)> {
         .map(|p| (p, p + 4))
         .or_else(|| buf.windows(2).position(|w| w == b"\n\n").map(|p| (p, p + 2)))
 }
-
-fn header_ci<'a>(headers: &'a HashMap<String, String>, name: &str) -> Option<&'a str> {
-    headers
-        .iter()
-        .find(|(k, _)| k.eq_ignore_ascii_case(name))
-        .map(|(_, v)| v.as_str())
+fn header_ci<'a>(headers: &'a HashMap<String, (String, String)>, name: &str) -> Option<&'a str> {
+    headers.get(name).map(|(_, v)| v.as_str())
 }
 
 /// A `Status` header sets the status explicitly; otherwise a `Location`
 /// header implies a redirect; otherwise default to 200.
-fn resolve_status(headers: &HashMap<String, String>) -> (u16, String) {
+fn resolve_status(headers: &HashMap<String, (String, String)>) -> (u16, String) {
     if let Some(v) = header_ci(headers, "status") {
         let mut parts = v.splitn(2, ' ');
         if let Some(code) = parts.next().and_then(|c| c.parse::<u16>().ok()) {
             let reason = parts.next().unwrap_or("").trim().to_string();
             return (code, reason);
         }
-    }
-
-    if header_ci(headers, "location").is_some() {
-        return (302, "Found".to_string());
     }
 
     (200, "OK".to_string())
@@ -218,12 +210,14 @@ fn build_cgi_env(meta: &RequestLine, headers: &Headers) -> HashMap<String, Strin
     return env;
 }
 
-fn parse_cgi_headers(buf: &[u8]) -> HashMap<String, String> {
+fn parse_cgi_headers(buf: &[u8]) -> HashMap<String, (String, String)> {
     let mut headers = HashMap::new();
     for line in String::from_utf8_lossy(buf).split('\n') {
         let line = line.trim_end_matches('\r');
-        line.split_once(':')
-            .and_then(|(k, v)| headers.insert(k.trim().to_string(), v.trim().to_string()));
+        if let Some((k, v)) = line.split_once(':') {
+            let key = k.trim();
+            headers.insert(key.to_ascii_lowercase(), (key.to_string(), v.trim().to_string()));
+        }
     }
     headers
 }
