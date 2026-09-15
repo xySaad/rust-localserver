@@ -1,4 +1,7 @@
-use std::{io, net::TcpStream};
+use std::{
+    io,
+    net::{Shutdown, TcpStream},
+};
 
 use crate::future::{AsyncRead, AsyncWrite, ReadFuture, WriteFuture};
 
@@ -10,6 +13,9 @@ impl AsyncTcpStream {
     pub fn from(stream: TcpStream) -> io::Result<Self> {
         stream.set_nonblocking(true)?;
         return Ok(Self { stream });
+    }
+    pub fn shutdown(&self) -> io::Result<()> {
+        self.stream.shutdown(Shutdown::Both)
     }
 }
 impl AsyncRead for AsyncTcpStream {

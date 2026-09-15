@@ -1,7 +1,7 @@
 use std::{collections::HashMap, io};
 
 use crate::{
-    future::{AsyncBufferReader, AsyncRead, AsyncWrite},
+    future::{AsyncBufferReader, AsyncRead, AsyncTcpStream, AsyncWrite},
     http::{Response, body_reader::BodyReader},
 };
 
@@ -61,5 +61,11 @@ impl<ARW: AsyncRead + AsyncWrite> Request<ARW> {
     }
     pub async fn write_raw_response(&mut self, buf: &[u8]) -> io::Result<usize> {
         return self.body_reader.into_raw_mut().as_mut_reader().write(buf).await;
+    }
+}
+
+impl<'t> Request<&'t mut AsyncTcpStream> {
+    pub fn shutdown(&mut self) -> io::Result<()> {
+        self.body_reader.into_raw_mut().as_mut_reader().shutdown()
     }
 }

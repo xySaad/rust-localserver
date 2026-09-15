@@ -20,6 +20,17 @@ impl CGIExecutor {
         cgi_file_path: String,
         client_body_size_limit: &'t ByteSize,
     ) -> http::Result<()> {
+        if let Some(content_length) = req
+            .headers
+            .get("Content-Length")
+            .and_then(|v| v.last())
+            .and_then(|v| v.parse::<u64>().ok())
+        {
+            if content_length > client_body_size_limit.as_u64() {
+                return Err(Status::ContentTooLarge);
+            }
+        }
+
         let script_dir = std::path::Path::new(&cgi_file_path)
             .parent()
             .map(|p| p.to_string_lossy().into_owned())
