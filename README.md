@@ -183,7 +183,3 @@ TCP Connection
 | [`libc`](https://crates.io/crates/libc) | `fcntl` syscall for setting file descriptors to non-blocking mode |
 
 > Dev dependencies (`bcrypt`, `form_urlencoded`, `getrandom`, `hex`) are used only in tests and examples.
-
-## License
-
-This project is open source. See your repository's license file for details.
