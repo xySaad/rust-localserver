@@ -55,15 +55,13 @@ async fn handle_request<'r, 't>(
         .map_err(|_| Status::BadRequest)?;
     let user_path = Path::new(&req.meta.path);
     let user_path = user_path.strip_prefix("/").map_err(|_| Status::BadRequest)?;
-    let cgi_request_path = root_path.join(user_path).canonicalize().map_err(|_| Status::NotFound)?;
+    let cgi_request_path = root_path.join(user_path).canonicalize().map_err(|_| Status::NotFound);
 
-    if cgi_request_path.starts_with(absolute_cgi_root) {
-        CGIExecutor::exec(
-            req,
-            cgi_request_path.to_string_lossy().to_string(),
-            client_body_size_limit,
-        )
-        .await?;
+    if let Ok(path) = cgi_request_path
+        && !path.is_dir()
+        && path.starts_with(absolute_cgi_root)
+    {
+        CGIExecutor::exec(req, path.to_string_lossy().to_string(), client_body_size_limit).await?;
         return Ok(None);
     } else {
         let response_parts = handle_file_serving(req, root, index, *list_directory, error_pages_dir).await?;
